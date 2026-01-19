@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { db } from "@/lib/db"
 import { orders, loginUsers } from "@/lib/db/schema"
 import { eq, desc, sql } from "drizzle-orm"
-import { normalizeTimestampMs, getLoginUserEmail, getSetting } from "@/lib/db/queries"
+import { normalizeTimestampMs, getLoginUserEmail, getSetting, getUserNotifications } from "@/lib/db/queries"
 import { ProfileContent } from "@/components/profile-content"
 
 export const dynamic = 'force-dynamic'
@@ -89,6 +89,31 @@ export default async function ProfilePage() {
         // Ignore errors
     }
 
+    // Get recent notifications
+    let notifications: Array<{
+        id: number
+        type: string
+        titleKey: string
+        contentKey: string
+        data: string | null
+        isRead: boolean | null
+        createdAt: number | null
+    }> = []
+    try {
+        const rows = await getUserNotifications(userId, 20)
+        notifications = rows.map((n) => ({
+            id: n.id,
+            type: n.type,
+            titleKey: n.titleKey,
+            contentKey: n.contentKey,
+            data: n.data,
+            isRead: n.isRead,
+            createdAt: n.createdAt ? new Date(n.createdAt as any).getTime() : null
+        }))
+    } catch {
+        notifications = []
+    }
+
     return (
         <ProfileContent
             user={{
@@ -102,6 +127,7 @@ export default async function ProfilePage() {
             checkinEnabled={checkinEnabled}
             orderStats={orderStats}
             recentOrders={recentOrders}
+            notifications={notifications}
         />
     )
 }

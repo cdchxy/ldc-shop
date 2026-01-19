@@ -4,7 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { isPaymentOrder } from "@/lib/payment";
 import { notifyAdminPaymentSuccess } from "@/lib/notifications";
 import { sendOrderEmail } from "@/lib/email";
-import { recalcProductAggregates } from "@/lib/db/queries";
+import { recalcProductAggregates, createUserNotification } from "@/lib/db/queries";
 import { revalidateTag } from "next/cache";
 
 export async function processOrderFulfillment(orderId: string, paidAmount: number, tradeNo: string) {
@@ -36,6 +36,23 @@ export async function processOrderFulfillment(orderId: string, paidAmount: numbe
             // best effort
         }
     };
+
+    const notifyUserDelivered = async (productName: string | null | undefined) => {
+        if (!order.userId) return
+        await createUserNotification({
+            userId: order.userId,
+            type: 'order_delivered',
+            titleKey: 'profile.notifications.orderDeliveredTitle',
+            contentKey: 'profile.notifications.orderDeliveredBody',
+            data: {
+                params: {
+                    orderId,
+                    productName: productName || order.productName || 'Product'
+                },
+                href: `/order/${orderId}`
+            }
+        })
+    }
 
     if (isPaymentOrder(order.productId)) {
         if (order.status === 'pending' || order.status === 'cancelled') {
@@ -102,6 +119,8 @@ export async function processOrderFulfillment(orderId: string, paidAmount: numbe
                     .where(eq(orders.orderId, orderId));
 
                 console.log(`[Fulfill] Shared product order ${orderId} delivered. Card: ${key}`);
+
+                await notifyUserDelivered(product?.name);
 
                 // Notify Admin
                 const user = await db.query.loginUsers.findFirst({
@@ -235,6 +254,8 @@ export async function processOrderFulfillment(orderId: string, paidAmount: numbe
                 email: order.email,
                 tradeNo: tradeNo
             });
+
+            await notifyUserDelivered(product?.name || order.productName);
 
             // Send email with card keys
             if (order.email) {

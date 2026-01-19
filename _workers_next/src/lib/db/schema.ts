@@ -122,3 +122,15 @@ export const refundRequests = sqliteTable('refund_requests', {
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
     processedAt: integer('processed_at', { mode: 'timestamp_ms' }),
 });
+
+// User notifications (inbox)
+export const userNotifications = sqliteTable('user_notifications', {
+    id: integer('id', { mode: 'number' }).primaryKey({ autoIncrement: true }),
+    userId: text('user_id').notNull().references(() => loginUsers.userId, { onDelete: 'cascade' }),
+    type: text('type').notNull(),
+    titleKey: text('title_key').notNull(),
+    contentKey: text('content_key').notNull(),
+    data: text('data'),
+    isRead: integer('is_read', { mode: 'boolean' }).default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
+});

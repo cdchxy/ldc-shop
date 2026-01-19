@@ -1,11 +1,11 @@
 import { db } from "./index";
-import { products, cards, orders, settings, reviews, loginUsers, categories } from "./schema";
+import { products, cards, orders, settings, reviews, loginUsers, categories, userNotifications } from "./schema";
 import { eq, sql, desc, and, asc, gte, or, inArray } from "drizzle-orm";
 import { revalidateTag } from "next/cache";
 
 // Database initialization state
 let dbInitialized = false;
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
 
 async function safeAddColumn(table: string, column: string, definition: string) {
     try {
@@ -31,6 +31,8 @@ async function ensureIndexes() {
         `CREATE INDEX IF NOT EXISTS orders_product_status_idx ON orders(product_id, status)`,
         `CREATE INDEX IF NOT EXISTS reviews_product_created_at_idx ON reviews(product_id, created_at)`,
         `CREATE INDEX IF NOT EXISTS refund_requests_order_id_idx ON refund_requests(order_id)`,
+        `CREATE INDEX IF NOT EXISTS user_notifications_user_created_idx ON user_notifications(user_id, created_at)`,
+        `CREATE INDEX IF NOT EXISTS user_notifications_user_read_idx ON user_notifications(user_id, is_read, created_at)`,
     ];
 
     for (const statement of indexStatements) {
@@ -70,6 +72,8 @@ async function ensureDatabaseInitialized() {
         // IMPORTANT: Even if table exists, ensure columns exist!
         // This is a proactive check on startup.
         await ensureProductsColumns();
+        await ensureLoginUsersTable();
+        await ensureUserNotificationsTable();
         await migrateTimestampColumnsToMs();
         await ensureIndexes();
         await backfillProductAggregates();
@@ -200,6 +204,18 @@ async function ensureDatabaseInitialized() {
             created_at INTEGER DEFAULT (unixepoch() * 1000),
             updated_at INTEGER DEFAULT (unixepoch() * 1000),
             processed_at INTEGER
+        );
+
+        -- User notifications table
+        CREATE TABLE IF NOT EXISTS user_notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL REFERENCES login_users(user_id) ON DELETE CASCADE,
+            type TEXT NOT NULL,
+            title_key TEXT NOT NULL,
+            content_key TEXT NOT NULL,
+            data TEXT,
+            is_read INTEGER DEFAULT 0,
+            created_at INTEGER DEFAULT (unixepoch() * 1000)
         );
     `);
 
@@ -590,6 +606,84 @@ export async function getCategories(): Promise<Array<{ id: number; name: string;
     }
 }
 
+export async function createUserNotification(params: {
+    userId: string | null | undefined
+    type: string
+    titleKey: string
+    contentKey: string
+    data?: Record<string, any> | null
+}) {
+    if (!params.userId) return
+    await ensureDatabaseInitialized()
+    try {
+        await db.insert(userNotifications).values({
+            userId: params.userId,
+            type: params.type,
+            titleKey: params.titleKey,
+            contentKey: params.contentKey,
+            data: params.data ? JSON.stringify(params.data) : null,
+            isRead: false,
+            createdAt: new Date()
+        })
+    } catch (error: any) {
+        if (isMissingTable(error)) {
+            await ensureUserNotificationsTable()
+            await db.insert(userNotifications).values({
+                userId: params.userId,
+                type: params.type,
+                titleKey: params.titleKey,
+                contentKey: params.contentKey,
+                data: params.data ? JSON.stringify(params.data) : null,
+                isRead: false,
+                createdAt: new Date()
+            })
+            return
+        }
+        throw error
+    }
+}
+
+export async function getUserNotifications(userId: string, limit: number = 20) {
+    await ensureDatabaseInitialized()
+    try {
+        return await db.select({
+            id: userNotifications.id,
+            userId: userNotifications.userId,
+            type: userNotifications.type,
+            titleKey: userNotifications.titleKey,
+            contentKey: userNotifications.contentKey,
+            data: userNotifications.data,
+            isRead: userNotifications.isRead,
+            createdAt: userNotifications.createdAt
+        })
+            .from(userNotifications)
+            .where(eq(userNotifications.userId, userId))
+            .orderBy(desc(normalizeTimestampMs(userNotifications.createdAt)))
+            .limit(limit)
+    } catch (error: any) {
+        if (isMissingTable(error)) {
+            await ensureUserNotificationsTable()
+            return []
+        }
+        throw error
+    }
+}
+
+export async function markAllUserNotificationsRead(userId: string) {
+    await ensureDatabaseInitialized()
+    try {
+        await db.update(userNotifications)
+            .set({ isRead: true })
+            .where(eq(userNotifications.userId, userId))
+    } catch (error: any) {
+        if (isMissingTable(error)) {
+            await ensureUserNotificationsTable()
+            return
+        }
+        throw error
+    }
+}
+
 export async function searchActiveProducts(params: {
     q?: string
     category?: string
@@ -840,6 +934,7 @@ async function migrateTimestampColumnsToMs() {
         { table: 'reviews', columns: ['created_at'] },
         { table: 'categories', columns: ['created_at', 'updated_at'] },
         { table: 'refund_requests', columns: ['created_at', 'updated_at', 'processed_at'] },
+        { table: 'user_notifications', columns: ['created_at'] },
     ];
 
     for (const { table, columns } of tableColumns) {
@@ -877,6 +972,21 @@ async function ensureSettingsTable() {
             updated_at INTEGER DEFAULT (unixepoch() * 1000)
         )
         `);
+}
+
+async function ensureUserNotificationsTable() {
+    await db.run(sql`
+        CREATE TABLE IF NOT EXISTS user_notifications(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL REFERENCES login_users(user_id) ON DELETE CASCADE,
+            type TEXT NOT NULL,
+            title_key TEXT NOT NULL,
+            content_key TEXT NOT NULL,
+            data TEXT,
+            is_read INTEGER DEFAULT 0,
+            created_at INTEGER DEFAULT (unixepoch() * 1000)
+        )
+    `);
 }
 
 async function isLoginUsersBackfilled(): Promise<boolean> {

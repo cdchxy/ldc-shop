@@ -539,7 +539,20 @@
         "emailHint": "下单时未填写邮箱将默认使用此邮箱。",
         "emailSave": "保存邮箱",
         "emailSaved": "邮箱已保存",
-        "emailInvalid": "邮箱格式不正确"
+        "emailInvalid": "邮箱格式不正确",
+        "inboxTitle": "收件箱",
+        "inboxEmpty": "暂无通知",
+        "markAllRead": "全部已读",
+        "inboxMarked": "已标记全部为已读",
+        "unread": "未读",
+        "notifications": {
+            "orderDeliveredTitle": "订单已发货",
+            "orderDeliveredBody": "您的订单 {{orderId}}（{{productName}}）已发货。",
+            "refundApprovedTitle": "退款已通过",
+            "refundApprovedBody": "您的订单 {{orderId}} 的退款申请已通过。",
+            "refundRejectedTitle": "退款被拒绝",
+            "refundRejectedBody": "您的订单 {{orderId}} 的退款申请被拒绝。"
+        }
     },
     "language": {
         "switch": "语言",

@@ -5,7 +5,7 @@ import { cards, orders, refundRequests, loginUsers } from "@/lib/db/schema"
 import { and, eq, sql } from "drizzle-orm"
 import { revalidatePath, revalidateTag } from "next/cache"
 import { checkAdmin } from "@/actions/admin"
-import { recalcProductAggregates, recalcProductAggregatesForMany } from "@/lib/db/queries"
+import { recalcProductAggregates, recalcProductAggregatesForMany, createUserNotification } from "@/lib/db/queries"
 
 export async function markOrderPaid(orderId: string) {
   await checkAdmin()
@@ -46,6 +46,22 @@ export async function markOrderDelivered(orderId: string) {
     status: 'delivered',
     deliveredAt: new Date(),
   }).where(eq(orders.orderId, orderId))
+
+  if (order.userId) {
+    await createUserNotification({
+      userId: order.userId,
+      type: 'order_delivered',
+      titleKey: 'profile.notifications.orderDeliveredTitle',
+      contentKey: 'profile.notifications.orderDeliveredBody',
+      data: {
+        params: {
+          orderId: order.orderId,
+          productName: order.productName || 'Product'
+        },
+        href: `/order/${order.orderId}`
+      }
+    })
+  }
 
   revalidatePath('/admin/orders')
   revalidatePath(`/admin/orders/${orderId}`)

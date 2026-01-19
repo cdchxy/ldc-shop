@@ -9,6 +9,7 @@ import { checkAdmin } from "@/actions/admin"
 import { products } from "@/lib/db/schema"
 import { notifyAdminRefundRequest } from "@/lib/notifications"
 import { markOrderRefunded, proxyRefund } from "@/actions/refund"
+import { createUserNotification } from "@/lib/db/queries"
 
 async function ensureRefundRequestsTable() {
   await db.run(sql`
@@ -96,7 +97,7 @@ export async function adminApproveRefund(requestId: number, adminNote?: string) 
 
   const order = await db.query.orders.findFirst({
     where: eq(orders.orderId, req.orderId),
-    columns: { orderId: true, tradeNo: true, amount: true }
+    columns: { orderId: true, tradeNo: true, amount: true, userId: true, productName: true }
   })
   if (!order) {
     throw new Error("Order not found")
@@ -108,6 +109,22 @@ export async function adminApproveRefund(requestId: number, adminNote?: string) 
     adminNote: adminNote || null,
     updatedAt: new Date(),
   }).where(eq(refundRequests.id, requestId))
+
+  if (order.userId) {
+    await createUserNotification({
+      userId: order.userId,
+      type: 'refund_approved',
+      titleKey: 'profile.notifications.refundApprovedTitle',
+      contentKey: 'profile.notifications.refundApprovedBody',
+      data: {
+        params: {
+          orderId: order.orderId,
+          productName: order.productName || 'Product'
+        },
+        href: `/order/${order.orderId}`
+      }
+    })
+  }
 
   revalidatePath('/admin/refunds')
 
@@ -135,12 +152,41 @@ export async function adminRejectRefund(requestId: number, adminNote?: string) {
   const session = await auth()
   const username = session?.user?.username || null
 
+  const req = await db.query.refundRequests.findFirst({
+    where: eq(refundRequests.id, requestId),
+    columns: { orderId: true }
+  })
+  if (!req) {
+    throw new Error("Refund request not found")
+  }
+
+  const order = await db.query.orders.findFirst({
+    where: eq(orders.orderId, req.orderId),
+    columns: { orderId: true, userId: true, productName: true }
+  })
+
   await db.update(refundRequests).set({
     status: 'rejected',
     adminUsername: username,
     adminNote: adminNote || null,
     updatedAt: new Date(),
   }).where(eq(refundRequests.id, requestId))
+
+  if (order?.userId) {
+    await createUserNotification({
+      userId: order.userId,
+      type: 'refund_rejected',
+      titleKey: 'profile.notifications.refundRejectedTitle',
+      contentKey: 'profile.notifications.refundRejectedBody',
+      data: {
+        params: {
+          orderId: order.orderId,
+          productName: order.productName || 'Product'
+        },
+        href: `/order/${order.orderId}`
+      }
+    })
+  }
 
   revalidatePath('/admin/refunds')
 }

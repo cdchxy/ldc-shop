@@ -539,7 +539,20 @@
         "emailHint": "Used as the default delivery email when you place orders.",
         "emailSave": "Save Email",
         "emailSaved": "Email saved",
-        "emailInvalid": "Invalid email format"
+        "emailInvalid": "Invalid email format",
+        "inboxTitle": "Inbox",
+        "inboxEmpty": "No notifications yet.",
+        "markAllRead": "Mark all read",
+        "inboxMarked": "All notifications marked as read",
+        "unread": "Unread",
+        "notifications": {
+            "orderDeliveredTitle": "Order delivered",
+            "orderDeliveredBody": "Your order {{orderId}} ({{productName}}) has been delivered.",
+            "refundApprovedTitle": "Refund approved",
+            "refundApprovedBody": "Your refund request for order {{orderId}} has been approved.",
+            "refundRejectedTitle": "Refund rejected",
+            "refundRejectedBody": "Your refund request for order {{orderId}} was rejected."
+        }
     },
     "language": {
         "switch": "Language",

@@ -3,7 +3,7 @@
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { products, cards, orders, loginUsers } from "@/lib/db/schema"
-import { cancelExpiredOrders, recalcProductAggregates, getLoginUserEmail } from "@/lib/db/queries"
+import { cancelExpiredOrders, recalcProductAggregates, getLoginUserEmail, createUserNotification } from "@/lib/db/queries"
 import { generateOrderId, generateSign } from "@/lib/crypto"
 import { eq, sql, and, or, isNull, lt } from "drizzle-orm"
 import { cookies } from "next/headers"
@@ -383,6 +383,22 @@ export async function createOrder(productId: string, quantity: number = 1, email
                         productName: product.name,
                         cardKeys: joinedKeys
                     }).catch(err => console.error('[Email] Points payment email failed:', err));
+                }
+
+                if (user?.id) {
+                    await createUserNotification({
+                        userId: user.id,
+                        type: 'order_delivered',
+                        titleKey: 'profile.notifications.orderDeliveredTitle',
+                        contentKey: 'profile.notifications.orderDeliveredBody',
+                        data: {
+                            params: {
+                                orderId,
+                                productName: product.name
+                            },
+                            href: `/order/${orderId}`
+                        }
+                    })
                 }
 
             } else {

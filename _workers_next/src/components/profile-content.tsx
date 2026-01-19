@@ -6,14 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Coins, Package, Clock, CheckCircle, ChevronRight, User, LogOut } from "lucide-react"
+import { Coins, Package, Clock, CheckCircle, ChevronRight, User, LogOut, Bell } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { updateProfileEmail } from "@/actions/profile"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { CheckInButton } from "@/components/checkin-button"
+import { getMyNotifications, markAllNotificationsRead } from "@/actions/user-notifications"
 
 interface ProfileContentProps {
     user: {
@@ -37,13 +38,49 @@ interface ProfileContentProps {
         status: string | null
         createdAt: Date | null
     }>
+    notifications: Array<{
+        id: number
+        type: string
+        titleKey: string
+        contentKey: string
+        data: string | null
+        isRead: boolean | null
+        createdAt: number | null
+    }>
 }
 
-export function ProfileContent({ user, points, checkinEnabled, orderStats, recentOrders }: ProfileContentProps) {
+export function ProfileContent({ user, points, checkinEnabled, orderStats, recentOrders, notifications: initialNotifications }: ProfileContentProps) {
     const { t } = useI18n()
     const [email, setEmail] = useState(user.email || '')
     const [savingEmail, setSavingEmail] = useState(false)
     const [pointsValue, setPointsValue] = useState(points)
+    const [notifications, setNotifications] = useState(initialNotifications)
+    const [markingAll, setMarkingAll] = useState(false)
+
+    const unreadCount = notifications.filter((n) => !n.isRead).length
+
+    const parseNotificationData = (data: string | null) => {
+        if (!data) return {}
+        try {
+            return JSON.parse(data) as { params?: Record<string, string | number>; href?: string }
+        } catch {
+            return {}
+        }
+    }
+
+    useEffect(() => {
+        const refresh = async () => {
+            try {
+                const res = await getMyNotifications()
+                if (res?.success && res.items) {
+                    setNotifications(res.items)
+                }
+            } catch {
+                // ignore refresh failures
+            }
+        }
+        refresh()
+    }, [])
 
     const getStatusBadge = (status: string | null) => {
         switch (status) {
@@ -213,6 +250,93 @@ export function ProfileContent({ user, points, checkinEnabled, orderStats, recen
                     </CardContent>
                 </Card>
             )}
+
+            {/* Inbox */}
+            <Card className="mb-6">
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                            <Bell className="h-4 w-4 text-muted-foreground" />
+                            {t('profile.inboxTitle')}
+                            {unreadCount > 0 && (
+                                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white px-1">
+                                    {unreadCount > 99 ? "99+" : unreadCount}
+                                </span>
+                            )}
+                        </span>
+                        {notifications.length > 0 && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={markingAll || unreadCount === 0}
+                                onClick={async () => {
+                                    if (markingAll || unreadCount === 0) return
+                                    setMarkingAll(true)
+                                    try {
+                                        const res = await markAllNotificationsRead()
+                                        if (res?.success) {
+                                            setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
+                                            toast.success(t('profile.inboxMarked'))
+                                        } else {
+                                            toast.error(t('common.error'))
+                                        }
+                                    } catch {
+                                        toast.error(t('common.error'))
+                                    } finally {
+                                        setMarkingAll(false)
+                                    }
+                                }}
+                            >
+                                {t('profile.markAllRead')}
+                            </Button>
+                        )}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {notifications.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">{t('profile.inboxEmpty')}</p>
+                    ) : (
+                        <div className="space-y-3">
+                            {notifications.map((n) => {
+                                const meta = parseNotificationData(n.data)
+                                const params = meta.params || {}
+                                const title = t(n.titleKey, params)
+                                const content = t(n.contentKey, params)
+                                const time = n.createdAt ? new Date(n.createdAt).toLocaleString() : '-'
+                                const body = (
+                                    <div className={`rounded-lg border p-3 ${n.isRead ? "bg-muted/30" : "bg-primary/5 border-primary/30"}`}>
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-medium">{title}</span>
+                                                    {!n.isRead && (
+                                                        <Badge variant="outline" className="text-[10px] text-primary border-primary/50">
+                                                            {t('profile.unread')}
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                <p className="text-sm text-muted-foreground mt-1 break-words">{content}</p>
+                                                <p className="text-xs text-muted-foreground mt-2">{time}</p>
+                                            </div>
+                                            {meta.href && (
+                                                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
+                                            )}
+                                        </div>
+                                    </div>
+                                )
+
+                                return meta.href ? (
+                                    <Link key={n.id} href={meta.href} className="block">
+                                        {body}
+                                    </Link>
+                                ) : (
+                                    <div key={n.id}>{body}</div>
+                                )
+                            })}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
 
             {/* Logout Button */}
             <Button

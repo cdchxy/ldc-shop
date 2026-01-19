@@ -27,7 +27,8 @@ async function repairTimestamps() {
         { table: 'settings', cols: ['updated_at'] },
         { table: 'reviews', cols: ['created_at'] },
         { table: 'categories', cols: ['created_at', 'updated_at'] },
-        { table: 'refund_requests', cols: ['created_at', 'updated_at', 'processed_at'] }
+        { table: 'refund_requests', cols: ['created_at', 'updated_at', 'processed_at'] },
+        { table: 'user_notifications', cols: ['created_at'] }
     ]
 
     for (const { table, cols } of timestampColumns) {
